@@ -3,83 +3,55 @@ import logging
 import os
 import pickle
 import sys
-import torch
-from transformers import InstructBlipProcessor, InstructBlipForConditionalGeneration
 from video_decoder import VideoDecoder
 
-
-class BLIP2:
-    def __init__(
-        self,
-        model="Salesforce/instructblip-flan-t5-xl",
-        processor="Salesforce/instructblip-flan-t5-xl",
-        do_sample=False,
-        num_beams=1,
-        max_length=256,
-        min_length=1,
-        top_p=0.9,
-        repetition_penalty=1.5,
-        length_penalty=1.0,
-        temperature=1,
-        precision=4,
-    ):
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        if precision == 4:
-            self._dtype = torch.bfloat16
-            self._model = InstructBlipForConditionalGeneration.from_pretrained(
-                model,
-                device_map="auto",
-                load_in_4bit=True,
-                torch_dtype=self._dtype,
-            )
-
-        elif precision == 8:
-            self._dtype = torch.bfloat16
-            self._model = InstructBlipForConditionalGeneration.from_pretrained(
-                model,
-                device_map="auto",
-                load_in_8bit=True,
-                torch_dtype=self._dtype,
-            )
-        else:  # 32bit
-            self._model = InstructBlipForConditionalGeneration.from_pretrained(model)
-            self._model.to(self._device)
-
-        self._processor = InstructBlipProcessor.from_pretrained(processor)
-
-        self._params = {
-            "do_sample": do_sample,
-            "num_beams": num_beams,
-            "max_length": max_length,
-            "min_length": min_length,
-            "top_p": top_p,
-            "repetition_penalty": repetition_penalty,
-            "length_penalty": length_penalty,
-            "temperature": temperature,
-        }
-
-    def get_response(self, image, query):
-        inputs = self._processor(images=image, text=query, return_tensors="pt").to(self._device, dtype=self._dtype)
-        outputs = self._model.generate(**inputs, **self._params)
-        return self._processor.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+from instructblip import InstructBLIP
+from llava import Llava
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="")
 
-    parser.add_argument("-v", "--video", type=str, required=True, help="input video to process")
-    parser.add_argument("-q", "--query", type=str, required=True, help="BLIP query")
+    parser.add_argument(
+        "-v", "--video", type=str, required=True, help="input video to process"
+    )
+    parser.add_argument("-q", "--query", type=str, required=True, help="query")
     parser.add_argument("-o", "--output", type=str, required=True, help="output file")
 
-    # optional model parameters
-    parser.add_argument("-m", "--model", type=str, default="Salesforce/instructblip-flan-t5-xl")
-    parser.add_argument("-p", "--processor", type=str, default="Salesforce/instructblip-flan-t5-xl")
+    # mllm
+    parser.add_argument(
+        "-m",
+        "--model",
+        type="str",
+        choices=["instructblip", "llava-1.5"],
+        required=True,
+        help="mllm model to use",
+    )
+
+    # optional intructblip parameters
+    parser.add_argument(
+        "-ibm",
+        "--instructblip_model",
+        type=str,
+        default="Salesforce/instructblip-flan-t5-xl",
+    )
+    parser.add_argument(
+        "-ibp",
+        "--instructblip_processor",
+        type=str,
+        default="Salesforce/instructblip-flan-t5-xl",
+    )
 
     # optional input parameters
-    parser.add_argument("--fps", type=int, required=False, default=2, help="fps to process video")
     parser.add_argument(
-        "--max_dimension", type=int, required=False, default=1920, help="max dimension of the video frames"
+        "--fps", type=int, required=False, default=2, help="fps to process video"
+    )
+    parser.add_argument(
+        "--max_dimension",
+        type=int,
+        required=False,
+        default=1920,
+        help="max dimension of the video frames",
     )
     parser.add_argument("--debug", action="store_true", help="debug output")
     args = parser.parse_args()
@@ -95,10 +67,21 @@ def main():
     if args.debug:
         level = logging.DEBUG
 
-    logging.basicConfig(format="%(asctime)s %(levelname)s:%(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=level)
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s:%(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=level,
+    )
 
     # load model
-    model = BLIP2(model=args.model, processor=args.processor)
+    model = None
+    if args.model == "instructblip":
+        model = InstructBLIP(
+            model=args.instructblip_model, processor=args.instructblip_processor
+        )
+
+    if args.model == "llava-1.5":
+        model = Llava()
 
     # decode video
     vd = VideoDecoder(path=args.video, max_dimension=args.max_dimension, fps=args.fps)
