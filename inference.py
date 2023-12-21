@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument(
         "-v", "--video", type=str, required=True, help="input video to process"
     )
-    parser.add_argument("-q", "--query", type=str, required=True, help="query")
+    parser.add_argument("-p", "--prompt", type=str, required=True, help="prompt")
     parser.add_argument("-o", "--output", type=str, required=True, help="output file")
 
     # mllm
@@ -89,7 +89,7 @@ def main():
     times = []
     responses = []
     for frame in vd:
-        response = model.get_response(image=frame["frame"], query=args.query)
+        response = model.get_response(image=frame["frame"], prompt=args.prompt)
         responses.append(response)
         times.append(frame["time"])
         logging.debug(f"{frame['time']} s: {response}")
