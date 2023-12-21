@@ -18,7 +18,7 @@ if mllm == "InstructBLIP":
     )
 
 if mllm == "Llava-1.5":
-    print("Loading LLava-1.5")
+    print("Loading Llava-1.5")
     model = Llava(use_flash_attention_2=False)
 
 # %% Decode video and select prompt
